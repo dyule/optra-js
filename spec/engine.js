@@ -1,29 +1,22 @@
 describe("engine", function() {
     function op_generator(siteID) {
-        var timeStamp = -1;
+        var stamper = Stamper(siteID);
         return {
             ins: function(position, value) {
-                timeStamp += 1;
                 return {
                     position: position,
                     value: value,
-                    state: {
-                        siteID: siteID,
-                        localTimestamp: timeStamp,
-                        remoteTimestamp: timeStamp
-                    }
+                    siteID: siteID,
+                    timestamp: stamper.stampLocal()
                 };
             }, del: function(position, len) {
-                timeStamp += 1;
                 return {
                     position: position,
                     length: len,
-                    state: {
-                        siteID: siteID,
-                        localTimestamp: timeStamp,
-                        remoteTimestamp: timeStamp
-                    }
+                    timestamp: stamper.stampLocal()
                 };
+            }, getStamper: function () {
+                return stamper;
             }
         }
     }
@@ -141,28 +134,41 @@ describe("engine", function() {
         the_engine.deletes.push(generator.del(15, 2));
         the_engine.deletes.push(generator.del(19, 1));
 
+        var stamper = generator.getStamper();
         generator = op_generator(2);
         var insSequence = operation_list();
         insSequence.push(generator.ins(3, "ee"));
         insSequence.push(generator.ins(11, "k"));
         insSequence.push(generator.ins(18, "wnwnwn"));
-        insSequence.push(generator.ins(28, "xx!"));
 
+        insSequence.push(generator.ins(28, "xx!"));
         var delSequence = operation_list();
         delSequence.push(generator.del(1, 2));
         delSequence.push(generator.del(11, 3));
         delSequence.push(generator.del(20, 1));
 
+        insSequence.iterate(function(o) {
+            stamper.stampRemote({
+                siteID: 2,
+                timestamp: o.timestamp
+            })
+        });
+
+        delSequence.iterate(function(o) {
+            stamper.stampRemote({
+                siteID: 2,
+                timestamp: o.timestamp
+            })
+        });
+
         the_engine.integrateRemote({
-            start_state: {
+            lastStamp: {
                 siteID: 1,
-                localTimestamp: 0,
-                remoteTimestamp: 0
+                timestamp: 0
             },
-            originalSite: 2,
             inserts: insSequence,
             deletes: delSequence
-        });
+        }, stamper, generator.getStamper().getLookupSince());
         var checker = list_checker(insSequence);
         checker.checkIns(2, "ee");
         checker.checkIns(14, "k");
@@ -194,5 +200,69 @@ describe("engine", function() {
         checker.checkDel(24, 1);
         checker.checkDel(24, 1);
 
+    });
+
+    it("should be able to process a local transaction", function() {
+        var the_engine = engine(1);
+        var generator = op_generator(1) ;
+        the_engine.inserts.push(generator.ins(0, "The quick brown fox"));
+        the_engine.inserts.push(generator.ins(4, "very "));
+        the_engine.inserts.push(generator.ins(14, "ly"));
+        the_engine.inserts.push(generator.ins(20, "u"));
+
+        the_engine.deletes.push(generator.del(2, 1));
+        the_engine.deletes.push(generator.del(4, 1));
+        the_engine.deletes.push(generator.del(8, 2));
+        the_engine.deletes.push(generator.del(15, 2));
+        the_engine.deletes.push(generator.del(19, 1));
+
+        generator = op_generator(2);
+        var insSequence = operation_list();
+        insSequence.push(generator.ins(2, "ee"));
+        insSequence.push(generator.ins(14, "k"));
+        insSequence.push(generator.ins(20, "wnwnwn"));
+        insSequence.push(generator.ins(29, "xx!"));
+
+        var delSequence = operation_list();
+        delSequence.push(generator.del(1, 1));
+        delSequence.push(generator.del(15, 2));
+        delSequence.push(generator.del(24, 1));
+
+        the_engine.processTransaction({
+            originalSite: 2,
+            inserts: insSequence,
+            deletes: delSequence
+        });
+
+        var checker = list_checker(insSequence);
+        checker.checkIns(3, "ee");
+        checker.checkIns(18, "k");
+        checker.checkIns(26, "wnwnwn");
+        checker.checkIns(36, "xx!");
+
+        checker = list_checker(delSequence);
+        checker.checkDel(1, 1);
+        checker.checkDel(19, 2);
+        checker.checkDel(30, 1);
+
+        checker = list_checker(the_engine.inserts);
+        checker.checkIns(0, "The quick brown fox");
+        checker.checkIns(3, "ee");
+        checker.checkIns(6, "very ");
+        checker.checkIns(16, "ly");
+        checker.checkIns(18, "k");
+        checker.checkIns(23, "u");
+        checker.checkIns(26, "wnwnwn");
+        checker.checkIns(36, "xx!");
+
+        checker = list_checker(the_engine.deletes);
+        checker.checkDel(1, 1);
+        checker.checkDel(1, 1);
+        checker.checkDel(5, 1);
+        checker.checkDel(9, 2);
+        checker.checkDel(15, 2);
+        checker.checkDel(15, 2);
+        checker.checkDel(24, 1);
+        checker.checkDel(24, 1);
     });
 });

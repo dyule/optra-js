@@ -13,6 +13,14 @@
                 new_obj.next = undefined;
             },
 
+            iterate: function(iterFunc) {
+              var node = this.head;
+                while (node) {
+                    iterFunc(node);
+                    node = node.next;
+                }
+            },
+
             iterate_with: function(otherIterator, compareFunc) {
                 var my_node = this.head;
                 var other_node = otherIterator.head;
@@ -31,8 +39,8 @@
                 var myNode = this.head;
                 var maxID;
                 while (myNode) {
-                    if (maxID === undefined || maxID < head.timestamp) {
-                        maxID = head.timestamp;
+                    if (maxID === undefined || maxID < myNode.timestamp) {
+                        maxID = myNode.timestamp;
                     }
                     myNode = myNode.next;
                 }
@@ -49,8 +57,8 @@
                             position: node.position,
                             value: node.value,
                             length: node.length,
-                            siteID: node.state.siteID,
-                            timestamp: node.state.timestamp
+                            siteID: node.siteID,
+                            timestamp: node.timestamp
                         };
                         newList.push(newNode);
                     }
@@ -69,8 +77,8 @@
                         position: node.position,
                         value: node.value,
                         length: node.length,
-                        siteID: node.state.siteID,
-                        timestamp: node.state.timestamp
+                        siteID: node.siteID,
+                        timestamp: node.timestamp
 
                     };
                     newList.push(newNode);

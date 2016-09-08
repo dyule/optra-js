@@ -7,14 +7,6 @@
         }
     }
 
-    function copy_state(state) {
-        return {
-            siteID: state.siteID,
-            localTimestamp: state.localTimestamp,
-            remoteTimestamp: state.remoteTimestamp
-        }
-    }
-
     function transform(incomingSequence, existingSequence) {
         var incomingOffset = 0;
         var existingOffset = 0;
@@ -34,7 +26,7 @@
             var existingEnd = existingStart + (existingOp.length || 0);
             var amount;
             var new_op;
-            if (incomingStart < existingStart || (incomingOp.value !== undefined && existingOp.value !== undefined && incomingStart == existingStart && incomingOp.state.siteID < existingOp.state.siteID)) {
+            if (incomingStart < existingStart || (incomingOp.value !== undefined && existingOp.value !== undefined && incomingStart == existingStart && incomingOp.siteID < existingOp.siteID)) {
                 if (existingStart < incomingEnd) {
                     if (existingEnd < incomingEnd) {
                         //Encloses
@@ -42,7 +34,8 @@
                         new_op = {
                             position: incomingOp.position,
                             length: incomingOp.length - amount,
-                            state: copy_state(incomingOp.state),
+                            siteID: incomingOp.siteID,
+                            timestamp: incomingOp.timestamp,
                             next: incomingOp.next,
                             back: incomingOp
                         };
@@ -114,7 +107,8 @@
                     position: incomingOp.position,
                     value: incomingOp.value,
                     length: incomingOp.length,
-                    state: copy_state(incomingOp.state),
+                    siteID: incomingOp.siteID,
+                    timestamp: incomingOp.timestamp,
                     next: incomingOp.next
                 });
                 return true;
@@ -125,7 +119,8 @@
                     position: incomingOp.position,
                     value: incomingOp.value,
                     length: incomingOp.length,
-                    state: copy_state(incomingOp.state),
+                    siteID: incomingOp.siteID,
+                    timestamp: incomingOp.timestamp,
                     next: existingOp,
                     back: existingOp.back
                 };
@@ -143,37 +138,108 @@
         });
     }
 
+    function splitBy(incomingSequence, existingSequence) {
+        var incomingOffset = 0;
+        var existingOffset = 0;
+        incomingSequence.iterate_with(existingSequence, function(incomingOp, existingOp) {
+            if (!incomingOp) {
+                return false;
+            }
+            if (!existingOp) {
+                return true;
+            }
+            var incomingStart = incomingOp.position - incomingOffset;
+            var existingStart = existingOp.position - existingOffset;
+            var incomingEnd = incomingStart + (incomingOp.length || 0);
+            if (incomingStart < existingStart) {
+                if (incomingEnd <= existingStart) {
+                    // Precedes
+                    incomingOffset += get_increment(incomingOp);
+                    return true;
+                } else {
+                    // Crosses
+                    var amount = existingStart - incomingStart;
+                    var new_op = {
+                        position: incomingOp.position,
+                        length: incomingOp.length - amount,
+                        siteID: incomingOp.siteID,
+                        timestamp: incomingOp.timestamp,
+                        next: incomingOp.next,
+                        back: incomingOp
+                    };
+                    incomingOp.length = amount;
+                    incomingOp.next = new_op;
+                    incomingOffset += get_increment(incomingOp);
+                    return true;
+                }
+            } else {
+                // Follows
+                existingOffset += get_increment(existingOp);
+            }
+        });
+    }
+
+    function swap(incomingSequence, existingSequence) {
+        var incomingOffset = 0;
+        var existingOffset = 0;
+        incomingSequence.iterate_with(existingSequence, function(incomingOp, existingOp) {
+            if (!incomingOp) {
+                existingOp.position += incomingOffset;
+                return false;
+            }
+            if (!existingOp) {
+                incomingOp.position -= existingOffset;
+                return true;
+            }
+            if (incomingOp.position - incomingOffset - existingOffset < existingOp.position - existingOffset) {
+                incomingOffset += get_increment(incomingOp);
+                incomingOp.position -= existingOffset;
+                return true;
+            } else {
+                existingOffset += get_increment(existingOp);
+                existingOp.position += incomingOffset;
+                return false;
+            }
+        });
+    }
+
     global.engine = function () {
         return {
             inserts: operation_list(),
             deletes: operation_list(),
             integrateRemote: function(remoteSequence, lookup, stamper) {
-                var localConcurrentInserts = this.getConcurrentInserts(remoteSequence, lookup, stamper);
+                var localConcurrentInserts = this.getConcurrentInserts(remoteSequence, stamper, lookup);
                 transform(remoteSequence.inserts, localConcurrentInserts);
                 var transformedRemoteInserts = remoteSequence.inserts.clone();
                 transform(remoteSequence.inserts, this.deletes);
-                this.assignTimestamps(transformedRemoteInserts);
+                this.assignTimestamps(transformedRemoteInserts, stamper, lookup);
                 merge(transformedRemoteInserts, this.inserts);
 
                 transform(this.deletes, transformedRemoteInserts);
 
-                var transformedConcurrentInserts = this.getConcurrentInserts(remoteSequence, lookup, stamper);
+                var transformedConcurrentInserts = this.getConcurrentInserts(remoteSequence, stamper, lookup);
                 transform(remoteSequence.deletes, transformedConcurrentInserts);
                 transform(remoteSequence.deletes, this.deletes);
-                this.assignTimestamps(remoteSequence.deletes);
+                this.assignTimestamps(remoteSequence.deletes, stamper, lookup);
                 merge(remoteSequence.deletes, this.deletes);
             },
-            assignTimestamps: function(sequence) {
-
+            assignTimestamps: function(sequence, lookup, stamper) {
+                sequence.iterate(function(o) {
+                    var remote = lookup[o.timestamp];
+                    o.timestamp = stamper.stampRemote(remote.siteID, remote.timestamp);
+                });
             },
-            getConcurrentInserts: function(remoteSequence, stamper, lookup) {
+            getConcurrentInserts: function(remoteSequence, lookup, stamper) {
                 var referenceTime;
-                var latestTimestamp = this.inserts.getMaxTimestamp();
-                latestTimestamp = max(latestTimestamp, this.deletes.getMaxTimestamp());
+                var latestTimestamp = remoteSequence.inserts.getMaxTimestamp();
+                var deleteTimestamp = remoteSequence.deletes.getMaxTimestamp();
+                if (latestTimestamp === undefined || (deleteTimestamp !== undefined && latestTimestamp < deleteTimestamp)) {
+                    latestTimestamp = deleteTimestamp;
+                }
                 var tailTimestamp = stamper.getLocalTimestampFor(lookup[latestTimestamp]);
 
                 if (remoteSequence.lastStamp !== undefined) {
-                    referenceTime = stamper.getLocalTimestampFor(lookup[remoteSequence.lastStamp]);
+                    referenceTime = stamper.getLocalTimestampFor(remoteSequence.lastStamp);
                     if (tailTimestamp !== undefined) {
                         return this.inserts.filter(function (insert) {
                             return insert.timestamp > referenceTime && insert.timestamp < tailTimestamp;
@@ -233,6 +299,21 @@
                 // return returnList;
 
             },
+
+            processTransaction: function(outgoingSequence) {
+                splitBy(outgoingSequence.deletes, this.deletes);
+                swap(outgoingSequence.inserts, this.deletes);
+
+                var originalDeletes = outgoingSequence.deletes.clone();
+
+                swap(outgoingSequence.deletes, this.deletes.clone());
+
+                merge(outgoingSequence.inserts, this.inserts);
+
+                merge(originalDeletes, this.deletes);
+            },
+
+
             internals: {
                 transform: transform,
                 merge: merge

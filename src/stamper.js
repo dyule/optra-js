@@ -1,8 +1,16 @@
 (function(global) {
-    global.stamper = function (siteID) {
+    global.Stamper = function (siteID) {
         var lastLocal;
         var lastRemote;
         var lookup = {};
+
+        function lookupLocal(remoteStamp) {
+            if (remoteStamp.siteID in lookup) {
+                return lookup[remoteStamp.siteID][remoteStamp.timestamp]
+            } else {
+                return undefined;
+            }
+        }
 
         return {
             stampLocal: function() {
@@ -36,17 +44,38 @@
                     lastLocal += 1;
                 }
                 lookup[remoteStamp.siteID][remoteStamp.timestamp] = lastLocal;
-                lastRemote = remote;
+                lastRemote = remoteStamp;
                 return lastLocal;
 
             },
 
             getLocalTimestampFor: function(remoteStamp) {
-                if (remoteStamp.siteID in lookup) {
-                    return lookup[remoteStamp.siteID][remoteStamp.timestamp]
-                } else {
-                    return undefined;
+                return lookupLocal(remoteStamp);
+            },
+
+            getLookupSince: function(remoteStamp) {
+                var lookupsSince = {};
+                var localStamp;
+                var remoteTime;
+                if (remoteStamp !== undefined ) {
+                    remoteTime = lookupLocal(remoteStamp);
                 }
+                for (var siteID in lookup) {
+                    if (lookup.hasOwnProperty(siteID)) {
+                        for (var remoteTimestamp in lookup[siteID]) {
+                            if (lookup[siteID].hasOwnProperty(remoteTimestamp)) {
+                                localStamp = lookup[siteID][remoteTimestamp];
+                                if (remoteTime === undefined || localStamp > remoteTime) {
+                                    lookupsSince[localStamp] = {
+                                        siteID: siteID,
+                                        timestamp: remoteTimestamp
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return lookupsSince;
             },
 
             getLastRemote: function() {
