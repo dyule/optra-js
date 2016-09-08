@@ -147,64 +147,90 @@
         return {
             inserts: operation_list(),
             deletes: operation_list(),
-            integrateRemote: function(remote_sequence) {
-                var localConcurrentInserts = this.getConcurrentInserts(remote_sequence.start_state, remote_sequence.originalSite);
-                transform(remote_sequence.inserts, localConcurrentInserts);
-                var transformedRemoteInserts = remote_sequence.inserts.clone();
-                transform(remote_sequence.inserts, this.deletes);
+            integrateRemote: function(remoteSequence, lookup, stamper) {
+                var localConcurrentInserts = this.getConcurrentInserts(remoteSequence, lookup, stamper);
+                transform(remoteSequence.inserts, localConcurrentInserts);
+                var transformedRemoteInserts = remoteSequence.inserts.clone();
+                transform(remoteSequence.inserts, this.deletes);
                 this.assignTimestamps(transformedRemoteInserts);
                 merge(transformedRemoteInserts, this.inserts);
 
                 transform(this.deletes, transformedRemoteInserts);
 
-                var transformedConcurrentInserts = this.getConcurrentInserts(remote_sequence.start_state, remote_sequence.originalSite);
-                transform(remote_sequence.deletes, transformedConcurrentInserts);
-                transform(remote_sequence.deletes, this.deletes);
-                this.assignTimestamps(remote_sequence.deletes);
-                merge(remote_sequence.deletes, this.deletes);
+                var transformedConcurrentInserts = this.getConcurrentInserts(remoteSequence, lookup, stamper);
+                transform(remoteSequence.deletes, transformedConcurrentInserts);
+                transform(remoteSequence.deletes, this.deletes);
+                this.assignTimestamps(remoteSequence.deletes);
+                merge(remoteSequence.deletes, this.deletes);
             },
             assignTimestamps: function(sequence) {
 
             },
-            getConcurrentInserts: function(state, original_site) {
+            getConcurrentInserts: function(remoteSequence, stamper, lookup) {
                 var referenceTime;
-                var node = this.inserts.head;
-                while (node) {
-                    if (node.state.siteID == state.siteID && node.state.remoteTimestamp == state.remoteTimestamp) {
-                        referenceTime = node.state.localTimestamp;
-                        break;
-                    }
-                    node = node.next;
-                }
-                if (referenceTime === undefined) {
-                    node = this.deletes.head;
-                    while (node) {
-                        if (node.state.siteID === state.siteID && node.state.remoteTimestamp == state.remoteTimestamp) {
-                            referenceTime = node.state.localTimestamp;
-                            break;
-                        }
-                        node = node.next;
-                    }
-                }
-                if (referenceTime === undefined) {
-                    console.error("Could not find reference state");
-                    return operation_list()
-                }
-                var returnList = operation_list();
-                node = this.inserts.head;
-                while (node) {
-                    if (node.state.siteID !== original_site && node.state.localTimestamp >  referenceTime) {
-                        returnList.push({
-                            position: node.position,
-                            value: node.value,
-                            length: node.length,
-                            next: node.next,
-                            state: copy_state(node.state),
+                var latestTimestamp = this.inserts.getMaxTimestamp();
+                latestTimestamp = max(latestTimestamp, this.deletes.getMaxTimestamp());
+                var tailTimestamp = stamper.getLocalTimestampFor(lookup[latestTimestamp]);
+
+                if (remoteSequence.lastStamp !== undefined) {
+                    referenceTime = stamper.getLocalTimestampFor(lookup[remoteSequence.lastStamp]);
+                    if (tailTimestamp !== undefined) {
+                        return this.inserts.filter(function (insert) {
+                            return insert.timestamp > referenceTime && insert.timestamp < tailTimestamp;
+                        });
+                    } else {
+                        return this.inserts.filter(function (insert) {
+                            return insert.timestamp > referenceTime;
                         });
                     }
-                    node = node.next;
+                } else {
+                    if (tailTimestamp !== undefined) {
+                        return this.inserts.filter(function (insert) {
+                            return insert.timestamp < tailTimestamp;
+                        });
+                    } else {
+                        return this.inserts.clone();
+                    }
                 }
-                return returnList;
+                //
+                // var node = this.inserts.head;
+                // while (node) {
+                //     if (node.state.siteID == state.siteID && node.state.remoteTimestamp == state.remoteTimestamp) {
+                //         referenceTime = node.state.localTimestamp;
+                //         break;
+                //     }
+                //     node = node.next;
+                // }
+                //
+                // if (referenceTime === undefined) {
+                //     node = this.deletes.head;
+                //     while (node) {
+                //         if (node.state.siteID === state.siteID && node.state.remoteTimestamp == state.remoteTimestamp) {
+                //             referenceTime = node.state.localTimestamp;
+                //             break;
+                //         }
+                //         node = node.next;
+                //     }
+                // }
+                // if (referenceTime === undefined) {
+                //     console.error("Could not find reference state");
+                //     return operation_list()
+                // }
+                // var returnList = operation_list();
+                // node = this.inserts.head;
+                // while (node) {
+                //     if (node.state.siteID !== original_site && node.state.localTimestamp >  referenceTime) {
+                //         returnList.push({
+                //             position: node.position,
+                //             value: node.value,
+                //             length: node.length,
+                //             next: node.next,
+                //             state: copy_state(node.state),
+                //         });
+                //     }
+                //     node = node.next;
+                // }
+                // return returnList;
 
             },
             internals: {
