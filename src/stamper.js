@@ -6,7 +6,7 @@
 
         function lookupLocal(remoteStamp) {
             if (remoteStamp.siteID in lookup) {
-                return lookup[remoteStamp.siteID][remoteStamp.timestamp]
+                return lookup[remoteStamp.siteID][remoteStamp.timestamp];
             } else {
                 return undefined;
             }
@@ -20,7 +20,7 @@
                     lastLocal += 1;
                 }
                 if (!(siteID in lookup)) {
-                    lookup[siteID] = {}
+                    lookup[siteID] = {};
                 }
                 lookup[siteID][lastLocal] = lastLocal;
                 lastRemote = {
@@ -32,7 +32,7 @@
 
             stampRemote: function(remoteStamp) {
                 if (!(remoteStamp.siteID in lookup)) {
-                    lookup[remoteStamp.siteID] = {}
+                    lookup[remoteStamp.siteID] = {};
                 } else {
                     if (remoteStamp.timestamp in lookup[remoteStamp.siteID]) {
                         return lookup[remoteStamp.siteID][remoteStamp.timestamp];
@@ -69,7 +69,7 @@
                                     lookupsSince[localStamp] = {
                                         siteID: siteID,
                                         timestamp: remoteTimestamp
-                                    }
+                                    };
                                 }
                             }
                         }
@@ -85,6 +85,6 @@
             getLastLocal: function() {
                 return lastLocal;
             }
-        }
-    }
+        };
+    };
 })(this);

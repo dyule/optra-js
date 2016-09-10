@@ -162,13 +162,13 @@ describe("engine", function() {
         });
 
         the_engine.integrateRemote({
-            lastStamp: {
+            lastTimestamp: {
                 siteID: 1,
                 timestamp: 0
             },
             inserts: insSequence,
             deletes: delSequence
-        }, stamper, generator.getStamper().getLookupSince());
+        }, generator.getStamper().getLookupSince(), stamper);
         var checker = list_checker(insSequence);
         checker.checkIns(2, "ee");
         checker.checkIns(14, "k");

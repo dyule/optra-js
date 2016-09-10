@@ -35,16 +35,16 @@
                 }
             },
 
-            getMaxTimestamp: function() {
+            getMinTimestamp: function() {
                 var myNode = this.head;
-                var maxID;
+                var minID;
                 while (myNode) {
-                    if (maxID === undefined || maxID < myNode.timestamp) {
-                        maxID = myNode.timestamp;
+                    if (minID === undefined || myNode.timestamp < minID ) {
+                        minID = myNode.timestamp;
                     }
                     myNode = myNode.next;
                 }
-                return maxID;
+                return  minID;
             },
             filter: function(filterFunc) {
 
@@ -85,7 +85,14 @@
                     node = node.next;
                 }
                 return newList;
+            },
+            getLength: function() {
+                var len = 0;
+                this.iterate(function() {
+                    len += 1;
+                });
+                return len;
             }
-        }
-    }
+        };
+    };
 })(this);

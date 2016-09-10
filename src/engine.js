@@ -114,7 +114,7 @@
                 return true;
             }
             var newOp;
-            if (incomingOp.position < existingOp.position || (incomingOp.value !== undefined && existingOp.value !== undefined && incomingOp.position == existingOp.position && incomingOp.state.siteID < existingOp.state.siteID)) {
+            if (incomingOp.position < existingOp.position || (incomingOp.value !== undefined && existingOp.value !== undefined && incomingOp.position == existingOp.position && incomingOp.siteID < existingOp.siteID)) {
                 newOp = {
                     position: incomingOp.position,
                     value: incomingOp.value,
@@ -208,38 +208,41 @@
             inserts: operation_list(),
             deletes: operation_list(),
             integrateRemote: function(remoteSequence, lookup, stamper) {
-                var localConcurrentInserts = this.getConcurrentInserts(remoteSequence, stamper, lookup);
+                var localConcurrentInserts = this.getConcurrentInserts(remoteSequence, lookup, stamper);
                 transform(remoteSequence.inserts, localConcurrentInserts);
                 var transformedRemoteInserts = remoteSequence.inserts.clone();
                 transform(remoteSequence.inserts, this.deletes);
-                this.assignTimestamps(transformedRemoteInserts, stamper, lookup);
+                this.assignTimestamps(transformedRemoteInserts, lookup, stamper);
                 merge(transformedRemoteInserts, this.inserts);
 
                 transform(this.deletes, transformedRemoteInserts);
 
-                var transformedConcurrentInserts = this.getConcurrentInserts(remoteSequence, stamper, lookup);
+                var transformedConcurrentInserts = this.getConcurrentInserts(remoteSequence, lookup, stamper);
                 transform(remoteSequence.deletes, transformedConcurrentInserts);
                 transform(remoteSequence.deletes, this.deletes);
-                this.assignTimestamps(remoteSequence.deletes, stamper, lookup);
+                this.assignTimestamps(remoteSequence.deletes, lookup, stamper);
                 merge(remoteSequence.deletes, this.deletes);
             },
             assignTimestamps: function(sequence, lookup, stamper) {
                 sequence.iterate(function(o) {
                     var remote = lookup[o.timestamp];
-                    o.timestamp = stamper.stampRemote(remote.siteID, remote.timestamp);
+                    o.timestamp = stamper.stampRemote(remote);
                 });
             },
             getConcurrentInserts: function(remoteSequence, lookup, stamper) {
                 var referenceTime;
-                var latestTimestamp = remoteSequence.inserts.getMaxTimestamp();
-                var deleteTimestamp = remoteSequence.deletes.getMaxTimestamp();
-                if (latestTimestamp === undefined || (deleteTimestamp !== undefined && latestTimestamp < deleteTimestamp)) {
+                var latestTimestamp = remoteSequence.inserts.getMinTimestamp();
+                var deleteTimestamp = remoteSequence.deletes.getMinTimestamp();
+                if (latestTimestamp === undefined || (deleteTimestamp !== undefined && latestTimestamp > deleteTimestamp)) {
                     latestTimestamp = deleteTimestamp;
                 }
-                var tailTimestamp = stamper.getLocalTimestampFor(lookup[latestTimestamp]);
+                var tailTimestamp;
+                if (latestTimestamp !== undefined) {
+                    tailTimestamp = stamper.getLocalTimestampFor(lookup[latestTimestamp]);
+                }
 
-                if (remoteSequence.lastStamp !== undefined) {
-                    referenceTime = stamper.getLocalTimestampFor(remoteSequence.lastStamp);
+                if (remoteSequence.lastTimestamp !== undefined) {
+                    referenceTime = stamper.getLocalTimestampFor(remoteSequence.lastTimestamp);
                     if (tailTimestamp !== undefined) {
                         return this.inserts.filter(function (insert) {
                             return insert.timestamp > referenceTime && insert.timestamp < tailTimestamp;
@@ -301,8 +304,9 @@
             },
 
             processTransaction: function(outgoingSequence) {
-                splitBy(outgoingSequence.deletes, this.deletes);
                 swap(outgoingSequence.inserts, this.deletes);
+                
+                splitBy(outgoingSequence.deletes, this.deletes);
 
                 var originalDeletes = outgoingSequence.deletes.clone();
 
@@ -318,6 +322,6 @@
                 transform: transform,
                 merge: merge
             }
-        }
-    }
+        };
+    };
 })(this);
